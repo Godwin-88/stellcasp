@@ -89,3 +89,5 @@ dmypy.json
 
 # ruff
 .ruff_cache/
+
+/home/ed/projects/stellcasp/zk_kyc_platform_spec.md

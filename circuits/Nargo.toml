@@ -1,0 +1,7 @@
+[package]
+name = "zk_kyc_circuit"
+type = "bin"
+authors = ["Ed Godwin"]
+compiler_version = ">=0.30.0"
+
+[dependencies]

@@ -1,0 +1,6 @@
+ci_threshold = 0
+compliance_index = 0
+jurisdiction_flag = 0
+manifold_score = 0
+manifold_threshold = 0
+policy_id = 0

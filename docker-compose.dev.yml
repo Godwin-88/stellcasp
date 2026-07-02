@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   neo4j:
-    image: neo4j:5.15
+    image: neo4j:5.26
     container_name: zkkyc-neo4j-dev
     environment:
       - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
@@ -16,8 +14,9 @@ services:
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
+      - ./migrations/neo4j:/migrations/neo4j:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -33,12 +32,72 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
+      # PostgreSQL auto-runs .sql files in this directory on first init
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zkkyc"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Runs Neo4j schema migrations after Neo4j is healthy
+  # PostgreSQL migrations run automatically via docker-entrypoint-initdb.d
+  neo4j-migrations:
+    image: python:3.11-slim
+    container_name: zkkyc-neo4j-migrations
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - .:/app:ro
+    working_dir: /app
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+    command: >
+      sh -c "
+        pip install --no-cache-dir neo4j &&
+        python scripts/run_neo4j_migrations.py
+      "
+    # Only run once, don't restart
+    restart: "no"
+
+  # Optional: Run all migrations (Postgres + Neo4j) via Python
+  # Use this if you want explicit control over migration execution
+  migrations:
+    image: python:3.11-slim
+    container_name: zkkyc-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - .:/app:ro
+    working_dir: /app
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-zkkyc}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - POSTGRES_DB=${POSTGRES_DB:-zkkyc}
+    command: >
+      sh -c "
+        pip install --no-cache-dir neo4j asyncpg &&
+        echo 'Running PostgreSQL migrations...' &&
+        psql postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB} -f /app/migrations/001_initial_schema.sql || true &&
+        echo 'Running Neo4j migrations...' &&
+        python scripts/run_neo4j_migrations.py &&
+        echo 'All migrations completed successfully'
+      "
+    # Only run once, don't restart
+    restart: "no"
+    profiles:
+      - migrations  # Only runs when explicitly requested with --profile migrations
 
 volumes:
   neo4j_data:

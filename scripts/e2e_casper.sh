@@ -3,7 +3,7 @@ set -e
 
 echo "Running Casper E2E Tests..."
 
-cd /home/ed/projects/testing/casper
+cd /home/ed/projects/stellcasp/casper
 
 # Build contracts
 cargo build --target wasm32-unknown-unknown --release

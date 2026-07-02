@@ -36,7 +36,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    Address, Bytes, BytesN, Env, Symbol, symbol_short, Vec,
+    Bytes, BytesN, Env, symbol_short,
 };
 
 // *** UNCOMMENT when rs-soroban-ultrahonk is added to Cargo.toml ***
@@ -150,7 +150,7 @@ impl ComplianceVerifier {
         let policy_id = Self::read_bytes32(&e, &public_inputs, 16);
 
         // Compute SHA-256 of the proof for the audit record
-        let proof_hash: BytesN<32> = e.crypto().sha256(&proof);
+        let proof_hash: BytesN<32> = e.crypto().sha256(&proof).into();
 
         let verified_at = e.ledger().timestamp();
 
