@@ -1,0 +1,10 @@
+[package]
+name = "identity_registry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+odra = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]

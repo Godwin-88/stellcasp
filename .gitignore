@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.eggs/
+*.egg-info/
+*.egg
+dist/
+build/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+#.env
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Neo4j
+neo4j/
+
+# PostgreSQL
+*.sql
+*.dump
+
+# Noir / nargo
+circuits/target/
+circuits/proofs/
+circuits/*.proof
+
+# Rust / Cargo
+casper/target/
+stellar/target/
+**/target/
+**/*.rs.bk
+
+# Stellar
+stellar/target/
+stellar/wasmtarget/
+
+# Casper
+casper/target/
+
+# Logs
+*.log
+logs/
+
+# Deployment artifacts
+deployments.json
+
+# Notebooks
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/

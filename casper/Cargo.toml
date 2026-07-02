@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = ["compliance_oracle", "identity_registry"]
+
+[workspace.dependencies]
+odra = { git = "https://github.com/odra-rust/odra" }
+odra-scaffold = { git = "https://github.com/odra-rust/odra" }
