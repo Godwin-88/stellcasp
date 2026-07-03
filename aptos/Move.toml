@@ -1,0 +1,11 @@
+[package]
+name = "zk_passport"
+version = "1.0.0"
+authors = ["ZK-KYC Team"]
+
+[addresses]
+zkkyc = "0x0"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "mainnet" }
+AptosStdlib = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-stdlib", rev = "mainnet" }

@@ -31,10 +31,18 @@ export default function EntitiesPage() {
   const [createError, setCreateError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Fetch entities (stub — replace with real endpoint when available)
     ;(async () => {
       try {
-        // Mock data for demo
+        const result = await api.getEntities({ limit: 100 })
+        const items = (result.items || []).map((e: any) => ({
+          id: e.id,
+          type: (e.type || 'WALLET').toUpperCase() as Entity['type'],
+          created_at: e.created_at || new Date().toISOString(),
+          risk_level: e.risk_level as Entity['risk_level'],
+        }))
+        setEntities(items)
+      } catch {
+        // Fallback mock data if backend unreachable
         const mock: Entity[] = [
           { id: '0xab...1234', type: 'WALLET', created_at: '2026-07-01T10:30:00Z', risk_level: 'LOW' },
           { id: 'KE-PIN-987654321', type: 'NATIONAL_ID', created_at: '2026-06-28T14:20:00Z', risk_level: 'MEDIUM' },

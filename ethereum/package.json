@@ -1,0 +1,16 @@
+{
+  "name": "zkkyc-ethereum",
+  "version": "1.0.0",
+  "description": "ZK-KYC Passport smart contracts for EVM chains",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0"
+  },
+  "devDependencies": {
+    "forge-std": "^1.9.0"
+  }
+}

@@ -130,7 +130,9 @@ class AuditResponse(BaseModel):
 # --------------------------------------------------------------------------- #
 
 class DiscloseRequest(BaseModel):
+    institution: str = Field(default="", description="Requesting institution name")
     signature: str = Field(..., min_length=1, description="Signed disclosure request")
+    factors: list[str] = Field(default_factory=list, description="Requested factor labels")
 
 
 class DiscloseResponse(BaseModel):

@@ -65,6 +65,39 @@ export const api = {
   generateProof: (id: string, threshold = 0.75, chain = 'stellar') =>
     request<{ entity_hash: string; nrs: number; proof_generated: boolean; verified: boolean; chain_target: string }>(`/api/v1/prove/${id}`, { method: 'POST', body: { threshold, chain } }),
   
+  // ─── Entity List ──────────────────────────────────────────────────────
+  getEntities: (params?: { limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.offset) qs.set('offset', String(params.offset))
+    return request<{ items: unknown[]; total: number; limit: number; offset: number }>(`/api/v1/entities?${qs}`)
+  },
+
+  // ─── Runs List ─────────────────────────────────────────────────────────
+  getRuns: (params?: { limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.offset) qs.set('offset', String(params.offset))
+    return request<{ items: unknown[]; total: number; limit: number; offset: number }>(`/api/v1/runs?${qs}`)
+  },
+
+  // ─── Security Events ──────────────────────────────────────────────────
+  getSecurityEvents: (params?: { severity?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    if (params?.offset) qs.set('offset', String(params.offset))
+    return request<{ items: unknown[]; total: number; limit: number; offset: number }>(`/api/v1/security/events?${qs}`)
+  },
+
+  // ─── Jurisdiction ─────────────────────────────────────────────────────
+  getJurisdictions: () =>
+    request<{ jurisdictions: { iso2: string; risk_score: number }[]; default_risk: number }>('/api/v1/admin/jurisdiction'),
+
+  // ─── Mint Passport ────────────────────────────────────────────────────
+  mintPassport: (id: string) =>
+    request<{ entity_hash: string; stellar_tx_hash: string; status: string; dex_verify: boolean; lending_verify: boolean; ci: number; contracts: Record<string, string> }>(`/api/v1/entity/${id}/mint-passport`, { method: 'POST' }),
+
   // ─── Incidents ──────────────────────────────────────────────────────────
   getIncidents: (params?: { status?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams()

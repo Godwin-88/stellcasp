@@ -1,3 +1,4 @@
+from .adapters import get_adapter_registry
 from .config import settings, get_settings
 from .graph.entity import EntityService
 from .graph.nrs import NRSEngine
@@ -8,6 +9,7 @@ from .api.main import create_app
 __all__ = [
     "settings",
     "get_settings",
+    "get_adapter_registry",
     "EntityService",
     "NRSEngine",
     "generate_zk_proof",

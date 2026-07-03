@@ -29,9 +29,12 @@ export default function RunsPage() {
   const [showPipeline, setShowPipeline] = useState(false)
 
   useEffect(() => {
-    // Mock data for demo — replace with real API call
     ;(async () => {
       try {
+        const result = await api.getRuns({ limit: 50 })
+        setRuns((result.items || []) as Run[])
+      } catch {
+        // Fallback mock data if backend unreachable
         const mock: Run[] = [
           {
             run_id: 'run_abc123',

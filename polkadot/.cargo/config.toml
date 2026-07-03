@@ -1,0 +1,8 @@
+[registries.crates-io]
+protocol = "sparse"
+
+[build]
+target-dir = "target"
+
+[net]
+retry = 3
