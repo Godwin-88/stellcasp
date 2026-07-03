@@ -3,9 +3,10 @@ import React, { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Brain, Loader2, CheckCircle, AlertTriangle, Clock,
-  ArrowRight, Search, Filter, ChevronDown, ChevronUp,
+  ArrowRight, Search, Filter, ChevronDown, ChevronUp, Plus,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import AgentPipelineModal from '../../components/AgentPipelineModal'
 
 type Run = {
   run_id: string
@@ -25,6 +26,7 @@ export default function RunsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [showPipeline, setShowPipeline] = useState(false)
 
   useEffect(() => {
     // Mock data for demo — replace with real API call
@@ -77,9 +79,17 @@ export default function RunsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Agent Runs</h1>
-        <p className="text-sm text-gray-500 mt-1">Trace LangGraph agent pipeline executions</p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Agent Runs</h1>
+          <p className="text-sm text-gray-500 mt-1">Trace LangGraph agent pipeline executions</p>
+        </div>
+        <button
+          onClick={() => setShowPipeline(true)}
+          className="btn-primary text-sm"
+        >
+          <Plus size={14} /> Run Compliance Pipeline
+        </button>
       </div>
 
       {/* Search */}
@@ -195,6 +205,11 @@ export default function RunsPage() {
           ))
         )}
       </div>
+
+      {/* Agent Pipeline Modal */}
+      {showPipeline && (
+        <AgentPipelineModal onClose={() => setShowPipeline(false)} />
+      )}
     </div>
   )
 }

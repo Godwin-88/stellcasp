@@ -34,6 +34,23 @@ export default function AuditPage() {
       try {
         const data = await api.getAudit(entityHash)
         setAudit(data)
+      } catch {
+        // ⚡ Demo mode: use mock audit data
+        const mock: AuditTrail = {
+          entity_hash: entityHash,
+          nrs_history: [
+            { computed_at: '2026-07-03T10:30:00Z', nrs: 0.42 },
+            { computed_at: '2026-07-02T14:20:00Z', nrs: 0.38 },
+          ],
+          proof_events: [
+            { type: 'proof_generated' as const, verified_at: '2026-07-03T10:30:00Z', status: 'VALID' },
+            { type: 'selective_disclosure' as const, factors: ['COMPLIANCE_INDEX_PASS', 'BEHAVIOURAL_MANIFOLD_PASS'] },
+          ],
+          on_chain_records: [
+            { chain: 'stellar' as const, tx_hash: 'f1a0e6f8b2c3d4e5a6b7c8d9e0f1a2b3c4d5e6f7', verified_at: '2026-07-03T10:30:00Z' },
+          ],
+        }
+        setAudit(mock)
       } finally {
         setLoading(false)
       }

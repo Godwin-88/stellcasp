@@ -16,6 +16,12 @@ type Incident = {
   created_at: string
 }
 
+const DEMO_INCIDENTS: Incident[] = [
+  { id: 'inc_001', entity_hash: '0xab...1234', ci: 0.82, threshold: 0.75, status: 'PENDING_REVIEW', created_at: '2026-07-03T09:12:00Z' },
+  { id: 'inc_002', entity_hash: '0xcd...5678', ci: 0.79, threshold: 0.75, status: 'PENDING_REVIEW', created_at: '2026-07-02T14:45:00Z' },
+  { id: 'inc_003', entity_hash: '0xef...9012', ci: 0.91, threshold: 0.75, status: 'ALERT_FAILED', created_at: '2026-07-01T11:30:00Z' },
+]
+
 export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
@@ -49,7 +55,7 @@ export default function IncidentsPage() {
       RESOLVED: 'bg-emerald-50 text-emerald-700',
       ALERT_FAILED: 'bg-rose-50 text-rose-700',
     }
-    const icons: Record<Incidents['status'], JSX.Element> = {
+    const icons: Record<Incident['status'], JSX.Element> = {
       PENDING_REVIEW: <Clock size={12} />,
       RESOLVED: <CheckCircle size={12} />,
       ALERT_FAILED: <AlertTriangle size={12} />,

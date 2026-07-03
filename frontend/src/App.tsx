@@ -14,6 +14,7 @@ import RunsPage from './pages/app/RunsPage'
 import AuditPage from './pages/app/AuditPage'
 import KeysPage from './pages/app/KeysPage'
 import SettingsPage from './pages/app/SettingsPage'
+import SecurityPage from './pages/app/SecurityPage'
 
 export default function App() {
   return (
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="audit/:entityHash" element={<AuditPage />} />
           <Route path="keys" element={<KeysPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="security" element={<SecurityPage />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />

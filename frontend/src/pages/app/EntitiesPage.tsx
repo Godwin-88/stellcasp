@@ -4,9 +4,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   Plus, Search, Filter, ArrowRight, Wallet, Hash,
   Calendar, MoreVertical, CheckCircle, AlertTriangle,
-  Loader2, X,
+  Loader2, X, Upload,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import RelationshipIngestionModal from '../../components/RelationshipIngestionModal'
 
 type Entity = {
   id: string
@@ -22,6 +23,7 @@ export default function EntitiesPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'WALLET' | 'NATIONAL_ID' | 'CORPORATE'>('ALL')
   const [showCreate, setShowCreate] = useState(searchParams.get('action') === 'new')
+  const [showImport, setShowImport] = useState(false)
 
   // Create form state
   const [newEntity, setNewEntity] = useState({ id: '', type: 'WALLET' as const })
@@ -96,12 +98,20 @@ export default function EntitiesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Entities</h1>
           <p className="text-sm text-gray-500 mt-1">Manage wallets, national IDs, and corporate entities</p>
         </div>
-        <button
-          onClick={() => { setShowCreate(true); setSearchParams({ action: 'new' }) }}
-          className="btn-primary text-sm"
-        >
-          <Plus size={14} /> Add Entity
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="btn-outline text-sm"
+          >
+            <Upload size={14} /> Import Transactions
+          </button>
+          <button
+            onClick={() => { setShowCreate(true); setSearchParams({ action: 'new' }) }}
+            className="btn-primary text-sm"
+          >
+            <Plus size={14} /> Add Entity
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -198,6 +208,16 @@ export default function EntitiesPage() {
           </div>
         )}
       </div>
+
+      {/* Import Transactions Modal */}
+      {showImport && (
+        <RelationshipIngestionModal
+          onClose={() => setShowImport(false)}
+          onSuccess={() => {
+            // Could refresh entities list here
+          }}
+        />
+      )}
 
       {/* Create Modal */}
       {showCreate && (

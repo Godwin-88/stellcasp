@@ -167,7 +167,12 @@ async def get_current_api_key(request: Request) -> str:
     Bootstrap mode: if the table is completely empty, any non-empty key is
     accepted so the first admin call to POST /api/v1/keys can succeed.
     Once at least one key exists, strict bcrypt validation applies.
+
+    🔒 DEMO MODE: Set DEMO_MODE=true in .env to bypass auth for hackathon judging.
     """
+    if os.getenv("DEMO_MODE", "").lower() == "true":
+        return "demo_key"
+
     api_key = request.headers.get("X-API-Key")
     if not api_key:
         raise _AuthError()

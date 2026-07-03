@@ -4,9 +4,13 @@ import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft, Network, Lock, FileCheck, AlertTriangle,
   CheckCircle, XCircle, TrendingUp, Globe, Shield,
-  Brain, Activity, Copy, ExternalLink,
+  Brain, Activity, Copy, ExternalLink, Eye, Table,
 } from 'lucide-react'
 import { api } from '../../lib/api'
+import EntityGraph from '../../components/EntityGraph'
+import ProofGenerationModal from '../../components/ProofGenerationModal'
+import PassportMintModal from '../../components/PassportMintModal'
+import SelectiveDisclosureModal from '../../components/SelectiveDisclosureModal'
 
 const TABS = ['Risk Factors', 'Manifold', 'Relationships', 'Passport']
 
@@ -18,21 +22,30 @@ export default function EntityDetail() {
   const [anomalies, setAnomalies] = useState<string[]>([])
   const [credential, setCredential] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [relationships, setRelationships] = useState<any[]>([])
+  const [view, setView] = useState<'graph' | 'table'>('graph')
+
+  // Modal states
+  const [showProofModal, setShowProofModal] = useState(false)
+  const [showPassportModal, setShowPassportModal] = useState(false)
+  const [showDisclosureModal, setShowDisclosureModal] = useState(false)
 
   useEffect(() => {
     if (!id) return
     ;(async () => {
       try {
-        const [f, m, a, c] = await Promise.all([
+        const [f, m, a, c, r] = await Promise.all([
           api.getFactors(id).catch(() => null),
           api.getManifold(id).catch(() => null),
           api.getAnomalies(id).catch(() => ({ anomalies: [] })),
           api.getCredential(id).catch(() => null),
+          api.getRelationships(id).catch(() => []),
         ])
         setFactors(f)
         setManifold(m)
         setAnomalies(a.anomalies || [])
         setCredential(c)
+        setRelationships(Array.isArray(r) ? r : [])
       } finally {
         setLoading(false)
       }
@@ -52,6 +65,21 @@ export default function EntityDetail() {
     if (v < 0.3) return 'text-emerald-600 bg-emerald-50'
     if (v < 0.6) return 'text-amber-600 bg-amber-50'
     return 'text-rose-600 bg-rose-50'
+  }
+
+  // Build graph data from relationships
+  const graphData = {
+    nodes: relationships.map(r => ({
+      id: r.source === id ? r.target : r.source,
+      type: 'WALLET' as const,
+      risk: 0.4,
+    })),
+    links: relationships.map(r => ({
+      source: r.source,
+      target: r.target,
+      amount: r.amount,
+      timestamp: r.timestamp,
+    })),
   }
 
   return (
@@ -103,6 +131,15 @@ export default function EntityDetail() {
           {/* Tab 0: Risk Factors */}
           {tab === 0 && factors && (
             <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-900">Six-Factor Compliance Index</h3>
+                <button
+                  onClick={() => setShowProofModal(true)}
+                  className="btn-primary text-xs"
+                >
+                  <Eye size={12} /> Trigger ZK Proof
+                </button>
+              </div>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {factorMeta.map(fm => {
                   const Icon = fm.icon
@@ -186,20 +223,97 @@ export default function EntityDetail() {
 
           {/* Tab 2: Relationships */}
           {tab === 2 && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <h2 className="font-bold text-gray-900 mb-5">Transaction Relationships</h2>
-              <div className="text-center py-12 text-gray-400">
-                <Network size={32} className="mx-auto mb-3 opacity-50" />
-                <p className="text-sm">Relationship graph visualisation</p>
-                <p className="text-xs mt-1">Integration with Neo4j Bloom pending</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">Transaction Relationships</h3>
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setView('graph')}
+                    className={`px-3 py-1.5 text-xs rounded-md font-medium flex items-center gap-1 ${
+                      view === 'graph' ? 'bg-white shadow-sm' : ''
+                    }`}
+                  >
+                    <Network size={12} /> Graph
+                  </button>
+                  <button
+                    onClick={() => setView('table')}
+                    className={`px-3 py-1.5 text-xs rounded-md font-medium flex items-center gap-1 ${
+                      view === 'table' ? 'bg-white shadow-sm' : ''
+                    }`}
+                  >
+                    <Table size={12} /> Table
+                  </button>
+                </div>
               </div>
+              {view === 'graph' ? (
+                relationships.length > 0 ? (
+                  <EntityGraph data={graphData} targetId={id || ''} />
+                ) : (
+                  <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center py-12 text-gray-400">
+                    <Network size={32} className="mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No relationships found for this entity</p>
+                  </div>
+                )
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  {relationships.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-100">
+                          <tr>
+                            <th className="text-left font-semibold text-gray-600 px-6 py-4">Source</th>
+                            <th className="text-left font-semibold text-gray-600 px-6 py-4">Target</th>
+                            <th className="text-left font-semibold text-gray-600 px-6 py-4">Amount</th>
+                            <th className="text-left font-semibold text-gray-600 px-6 py-4">Currency</th>
+                            <th className="text-left font-semibold text-gray-600 px-6 py-4">Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relationships.map((r, i) => (
+                            <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
+                              <td className="px-6 py-4 font-mono text-xs">{r.source?.slice(0, 16)}...</td>
+                              <td className="px-6 py-4 font-mono text-xs">{r.target?.slice(0, 16)}...</td>
+                              <td className="px-6 py-4 font-medium">{r.amount?.toLocaleString()}</td>
+                              <td className="px-6 py-4">{r.currency || '—'}</td>
+                              <td className="px-6 py-4 text-xs text-gray-500">
+                                {r.timestamp ? new Date(r.timestamp).toLocaleString() : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-400">
+                      <Network size={32} className="mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">No relationships found</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {/* Tab 3: Passport */}
           {tab === 3 && (
             <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <h2 className="font-bold text-gray-900 mb-5">Compliance Passport</h2>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-bold text-gray-900">Compliance Passport</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowDisclosureModal(true)}
+                    className="btn-outline text-xs"
+                  >
+                    Request Disclosure
+                  </button>
+                  <button
+                    onClick={() => setShowPassportModal(true)}
+                    className="btn-primary text-xs"
+                  >
+                    Mint Passport
+                  </button>
+                </div>
+              </div>
               {credential ? (
                 <div className="space-y-4">
                   <div className={`p-5 rounded-xl border-2 ${
@@ -251,12 +365,28 @@ export default function EntityDetail() {
                 <div className="text-center py-12">
                   <FileCheck size={32} className="text-gray-300 mx-auto mb-3" />
                   <p className="text-sm text-gray-500">No passport issued yet</p>
-                  <button className="btn-primary text-xs mt-4">Generate Proof & Mint Passport</button>
+                  <button
+                    onClick={() => setShowPassportModal(true)}
+                    className="btn-primary text-xs mt-4"
+                  >
+                    Generate Proof & Mint Passport
+                  </button>
                 </div>
               )}
             </div>
           )}
         </>
+      )}
+
+      {/* Modals */}
+      {showProofModal && id && (
+        <ProofGenerationModal entityId={id} onClose={() => setShowProofModal(false)} />
+      )}
+      {showPassportModal && id && (
+        <PassportMintModal entityId={id} onClose={() => setShowPassportModal(false)} />
+      )}
+      {showDisclosureModal && id && (
+        <SelectiveDisclosureModal entityId={id} onClose={() => setShowDisclosureModal(false)} />
       )}
     </div>
   )
