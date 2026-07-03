@@ -79,8 +79,7 @@ async def _run_subprocess(cmd: list[str], cwd: Path, timeout: float) -> tuple[in
         proc.kill()
         await proc.wait()
         raise TimeoutError(f"{' '.join(cmd)} timed out after {timeout}s")
-    return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
-
+    return proc.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
 
 def _isolated_circuit_copy(tmp_root: Path) -> Path:
     """Copies the circuit project into an isolated directory per call, so

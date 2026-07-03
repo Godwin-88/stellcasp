@@ -3,7 +3,6 @@ import sys
 import time
 
 from .agents.graph import compliance_graph
-from .config import get_settings
 
 
 def main():
@@ -14,7 +13,7 @@ def main():
     parser.add_argument("--prove", action="store_true", help="Generate ZK proof after compliance check")
     args = parser.parse_args()
 
-    settings = get_settings()
+    #settings = get_settings()
     start_time = time.time()
 
     state = {

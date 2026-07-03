@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-blue text-white font-medium text-sm
+           hover:bg-blue-700 active:scale-[0.98] transition-all duration-150 shadow-sm;
+  }
+  .btn-outline {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700
+           font-medium text-sm hover:bg-gray-50 active:scale-[0.98] transition-all duration-150;
+  }
+  .btn-white {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-brand-blue font-medium text-sm
+           hover:bg-gray-50 active:scale-[0.98] transition-all duration-150 shadow-sm;
+  }
+  .feature-card {
+    @apply bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-md hover:border-gray-200 transition-all duration-200 cursor-pointer;
+  }
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
