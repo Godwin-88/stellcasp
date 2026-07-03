@@ -119,8 +119,9 @@ step_generate_proof() {
     # The Python helper returns a JSON blob with proof_hex, public_inputs,
     # entity_hash, and the computed CI/manifold/jurisdiction values (for
     # logging only — the private witnesses are never written to disk).
-    local proof_json
-    proof_json="$(python3 - "$ENTITY_ID" "$CI_THRESHOLD" "$MANIFOLD_THRESHOLD" "$POLICY_ID" <<'PY'
+    local py_script
+    py_script="$(mktemp /tmp/demo_proof_XXXXXX.py)"
+    cat > "$py_script" <<'PYEOF'
 import asyncio
 import json
 import sys
@@ -140,8 +141,6 @@ async def main():
         manifold_threshold=float(man_thr),
         policy_id=policy_id,
     )
-    # entity_hash is computed inside CIEngine; we recompute here for the
-    # dispatch step. In production the Settlement Agent pulls it from state.
     from zkkyc.graph.entity import hash_entity_id
     entity_hash = hash_entity_id(entity_id)
     out = {
@@ -156,8 +155,10 @@ async def main():
     print(json.dumps(out))
 
 asyncio.run(main())
-PY
-    )" || die "Proof generation failed"
+PYEOF
+    local proof_json
+    proof_json="$(python3 "$py_script" "$ENTITY_ID" "$CI_THRESHOLD" "$MANIFOLD_THRESHOLD" "$POLICY_ID")" || die "Proof generation failed"
+    rm -f "$py_script"
 
     # Parse the JSON into shell variables using python (jq-free)
     PROOF_HEX="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['proof_hex'])" "$proof_json")"
@@ -178,8 +179,9 @@ step_verify_on_chain() {
     log_step "Step 2 / Soroban verify_and_attest"
     log_info "verifier_contract  = $STELLAR_VERIFIER_CONTRACT_ID"
 
-    local tx_hash
-    tx_hash="$(python3 - "$PROOF_HEX" "$PUBLIC_INPUTS_JSON" "$ENTITY_HASH" "$POLICY_ID" <<'PY'
+    local py_script
+    py_script="$(mktemp /tmp/demo_verify_XXXXXX.py)"
+    cat > "$py_script" <<'PYEOF'
 import asyncio
 import json
 import sys
@@ -197,8 +199,10 @@ async def main():
     print(tx_hash)
 
 asyncio.run(main())
-PY
-    )" || die "Soroban verify_and_attest failed"
+PYEOF
+    local tx_hash
+    tx_hash="$(python3 "$py_script" "$PROOF_HEX" "$PUBLIC_INPUTS_JSON" "$ENTITY_HASH" "$POLICY_ID")" || die "Soroban verify_and_attest failed"
+    rm -f "$py_script"
 
     VERIFIER_TX_HASH="$tx_hash"
     record_tx "verify_and_attest" "$VERIFIER_TX_HASH"
@@ -239,8 +243,9 @@ step_mint_passport() {
         )" || die "mint_passport invocation failed"
     else
         # Python fallback via stellar-sdk
-        tx_hash="$(python3 - "$STELLAR_PASSPORT_CONTRACT_ID" "$STELLAR_ORACLE_AUTHORITY" \
-                       "$POLICY_ID" "$expires_at" "$proof_hash" "$ENTITY_HASH" <<'PY'
+        local py_script
+        py_script="$(mktemp /tmp/demo_mint_XXXXXX.py)"
+        cat > "$py_script" <<'PYEOF'
 import asyncio
 import sys
 from zkkyc.zk.stellar import _mint_passport_fallback
@@ -258,8 +263,10 @@ async def main():
     print(tx_hash)
 
 asyncio.run(main())
-PY
-        )" || die "mint_passport (Python fallback) failed"
+PYEOF
+        tx_hash="$(python3 "$py_script" "$STELLAR_PASSPORT_CONTRACT_ID" "$STELLAR_ORACLE_AUTHORITY" \
+                       "$POLICY_ID" "$expires_at" "$proof_hash" "$ENTITY_HASH")" || die "mint_passport (Python fallback) failed"
+        rm -f "$py_script"
     fi
 
     PASSPORT_MINT_TX_HASH="$tx_hash"
@@ -295,8 +302,9 @@ step_dual_protocol_verify() {
             expires_at="$(echo "$invoke_out" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d[1] if isinstance(d,list) else d.get('expires_at',0))")"
         else
             # Python fallback — read-only view call via simulation
-            local view_out
-            view_out="$(python3 - "$STELLAR_PASSPORT_CONTRACT_ID" "$STELLAR_ORACLE_AUTHORITY" "$POLICY_ID" <<'PY'
+            local py_script
+            py_script="$(mktemp /tmp/demo_verify_cred_XXXXXX.py)"
+            cat > "$py_script" <<'PYEOF'
 import asyncio
 import json
 import sys
@@ -312,8 +320,10 @@ async def main():
     print(json.dumps(result))
 
 asyncio.run(main())
-PY
-            )" || die "verify_credential (Python fallback) failed for $ctx"
+PYEOF
+            local view_out
+            view_out="$(python3 "$py_script" "$STELLAR_PASSPORT_CONTRACT_ID" "$STELLAR_ORACLE_AUTHORITY" "$POLICY_ID")" || die "verify_credential (Python fallback) failed for $ctx"
+            rm -f "$py_script"
             valid="$(echo "$view_out" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['valid'])")"
             expires_at="$(echo "$view_out" | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['expires_at'])")"
         fi

@@ -39,6 +39,6 @@ echo "IdentityRegistry deployed: $REGISTRY_HASH"
 # Record results
 jq -n --arg oracle "$COMPLIANCE_HASH" --arg registry "$REGISTRY_HASH" \
     '{compliance_oracle_contract: $oracle, identity_registry_contract: $registry}' \
-    > /home/ed/projects/testing/deployments.json
+    > /home/ed/projects/stellcasp/deployments.json
 
 echo "E2E Tests completed successfully"
