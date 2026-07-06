@@ -4,30 +4,27 @@ Casper Odra Passport Adapter — ZK-KYC Compliance Agent (zkkyc.adapters.casper)
 Spec reference: EP-08 (F-08.1 — US-08.1.1), EP-04 (F-04.1.3, F-04.2.1, F-04.2.2,
                   F-04.2.3)
 
-Implements the PassportAdapterBase interface for Casper testnet / mainnet
-using Odra smart contracts deployed via `casper-client`.
+Augmented with Casper AI Toolkit integrations:
+  - MCP tool invocation layer (Casper MCP Server)
+  - Account Abstraction (agent_key on-chain identity)
+  - EIP-712 typed-data signing for off-chain attestations
+  - CSPR.click agent wallet management
 
 On-chain contracts:
   - ComplianceOracle: records PASS/FAIL verdicts immutably
   - IdentityRegistry: maps wallet keys to compliance token status
-
-The adapter uses the reference deploy flow from `scripts/e2e_casper.sh` for
-testnet deployments. Production wiring should use `casper-sdk-py` or direct
-`casper-client` RPC calls.
-
-Environment variables consumed:
-  CASPER_COMPLIANCE_ORACLE_CONTRACT, CASPER_IDENTITY_REGISTRY_CONTRACT,
-  CASPER_NODE_ADDRESS, CASPER_CHAIN_NAME, CASPER_SECRET_KEY_PATH
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 
 from ..config import Settings, get_settings
+from ..toolkit import cspr_click, mcp_server, x402_facilitator
 from .base import (
     AdapterDeploymentError,
     DeploymentInfo,
@@ -40,12 +37,39 @@ logger = logging.getLogger(__name__)
 class CasperAdapter(PassportAdapterBase):
     """Casper Odra Compliance Oracle & IdentityRegistry Adapter.
 
-    Spec reference: US-03.1.1, US-03.1.2, US-03.1.3, US-03.2.1, US-03.2.2,
-                    US-08.1.1
+    Augmented with Casper AI Toolkit: MCP, AA, EIP-712, CSPR.click.
     """
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
+        self._mcp_client: mcp_server.CasperMCPClient | None = None
+        self._wallet_manager: cspr_click.AgentWalletManager | None = None
+        self._use_mcp = getattr(settings, "casper_use_mcp", True)
+        self._use_facilitator = getattr(settings, "casper_use_facilitator", True)
+
+    # ------------------------------------------------------------------
+    # Tooling helpers
+    # ------------------------------------------------------------------
+
+    async def _mcp(self) -> mcp_server.CasperMCPClient | None:
+        if not self._use_mcp:
+            return None
+        if self._mcp_client is None:
+            url = getattr(self.settings, "casper_mcp_server_url", "http://localhost:3001")
+            self._mcp_client = mcp_server.CasperMCPClient(base_url=url, settings=self.settings)
+        return self._mcp_client
+
+    async def _ensure_agent_wallet(self) -> cspr_click.AgentWallet:
+        if self._wallet_manager is None:
+            self._wallet_manager = cspr_click.AgentWalletManager(settings=self.settings)
+        if not self._wallet_manager.wallet:
+            self._wallet_manager.load_or_create()
+        assert self._wallet_manager.wallet is not None
+        return self._wallet_manager.wallet
+
+    # ------------------------------------------------------------------
+    # PassportAdapterBase interface
+    # ------------------------------------------------------------------
 
     async def verify_proof(self, proof_hex: str, public_inputs: list[int]) -> bool:
         """Casper stores a deterministic verdict, not a ZK proof on-chain.
@@ -53,13 +77,6 @@ class CasperAdapter(PassportAdapterBase):
         The platform guarantees proof validity off-chain before calling
         `record_verdict`. This method returns True to satisfy the interface
         contract; the actual compliance decision is recorded via `mint_passport`.
-
-        Args:
-            proof_hex: accepted for interface compliance but not used on-chain.
-            public_inputs: accepted for interface compliance but not used on-chain.
-
-        Returns:
-            True — verification happens off-chain; on-chain stores the verdict.
         """
         logger.debug("Casper verify_proof called — verdict is recorded off-chain")
         return True
@@ -73,19 +90,33 @@ class CasperAdapter(PassportAdapterBase):
     ) -> str:
         """Record a PASS verdict and mint a compliance token status.
 
-        Calls `record_verdict(entity_hash, true, expires_at)` on the
-        ComplianceOracle, then `mint_compliance_token(wallet, entity_hash)` on
-        the IdentityRegistry.
-
-        Args:
-            wallet: Casper public key hex string.
-            policy_id: policy identifier.
-            expires_at: UNIX timestamp for expiry.
-            proof_hash: SHA-256 of the ZK proof (used as entity_hash).
-
-        Returns:
-            Casper deploy hash.
+        Uses MCP tools when available; falls back to direct casper-client RPC.
         """
+        entity_hash = proof_hash
+
+        try:
+            mcp = await self._mcp()
+            if mcp is not None:
+                verdict_result = mcp.record_verdict(entity_hash, True, expires_at)
+                mint_result = mcp.mint_compliance_token(wallet, entity_hash)
+                logger.info(
+                    "casper compliance token minted via MCP",
+                    extra={"wallet": wallet, "entity_hash": entity_hash},
+                )
+                return mint_result.get("deploy_hash", verdict_result.get("deploy_hash", ""))
+
+            return await self._mint_passport_legacy(wallet, policy_id, expires_at, entity_hash)
+        except mcp_server.MCPToolError as exc:
+            logger.warning("MCP mint failed; falling back to legacy: %s", exc)
+            return await self._mint_passport_legacy(wallet, policy_id, expires_at, entity_hash)
+
+    async def _mint_passport_legacy(
+        self,
+        wallet: str,
+        policy_id: str,
+        expires_at: int,
+        entity_hash: str,
+    ) -> str:
         oracle_contract = getattr(self.settings, "casper_compliance_oracle_contract", None)
         registry_contract = getattr(self.settings, "casper_identity_registry_contract", None)
         if not oracle_contract or not registry_contract:
@@ -103,8 +134,6 @@ class CasperAdapter(PassportAdapterBase):
                 "casper",
                 f"CASPER_SECRET_KEY_PATH not set or file missing: {secret_key_path}",
             )
-
-        entity_hash = proof_hash
 
         try:
             oracle_hash = await self._record_verdict(
@@ -126,18 +155,21 @@ class CasperAdapter(PassportAdapterBase):
             raise AdapterDeploymentError("casper", f"mint_passport failed: {exc}", cause=exc) from exc
 
     async def revoke_passport(self, wallet: str, policy_id: str, reason: str) -> str:
-        """Revoke a compliance token by recording a FAIL verdict.
+        """Revoke a compliance token by recording a FAIL verdict."""
+        mcp = await self._mcp()
+        entity_hash = policy_id
 
-        Calls `revoke_verdict(entity_hash, reason)` on ComplianceOracle.
+        if mcp is not None:
+            try:
+                result = mcp.revoke_verdict(entity_hash, reason)
+                logger.info("casper verdict revoked via MCP", extra={"reason": reason})
+                return result.get("deploy_hash", "")
+            except mcp_server.MCPToolError as exc:
+                logger.warning("MCP revoke failed; falling back: %s", exc)
 
-        Args:
-            wallet: Casper public key hex string.
-            policy_id: policy identifier.
-            reason: revocation reason string.
+        return await self._revoke_passport_legacy(entity_hash, reason)
 
-        Returns:
-            Casper deploy hash.
-        """
+    async def _revoke_passport_legacy(self, entity_hash: str, reason: str) -> str:
         oracle_contract = getattr(self.settings, "casper_compliance_oracle_contract", None)
         if not oracle_contract:
             raise AdapterDeploymentError("casper", "CASPER_COMPLIANCE_ORACLE_CONTRACT is not configured")
@@ -152,8 +184,6 @@ class CasperAdapter(PassportAdapterBase):
                 f"CASPER_SECRET_KEY_PATH not set or file missing: {secret_key_path}",
             )
 
-        entity_hash = policy_id
-
         try:
             tx_hash = await self._revoke_verdict(
                 node_address, chain_name, secret_key_path, oracle_contract,
@@ -167,18 +197,22 @@ class CasperAdapter(PassportAdapterBase):
             raise AdapterDeploymentError("casper", f"revoke_passport failed: {exc}", cause=exc) from exc
 
     async def verify_credential(self, wallet: str, policy_id: str) -> dict[str, Any]:
-        """Query the IdentityRegistry for wallet compliance status.
+        """Query the IdentityRegistry for wallet compliance status."""
+        mcp = await self._mcp()
+        if mcp is not None:
+            try:
+                result = mcp.get_identity(wallet)
+                if result and result.get("status") == "COMPLIANT":
+                    expires_at = result.get("expires_at", 0)
+                    return {
+                        "valid": True,
+                        "expires_at": expires_at,
+                        "policy_id": policy_id,
+                    }
+                return {"valid": False, "expires_at": 0, "policy_id": policy_id}
+            except mcp_server.MCPToolError:
+                pass
 
-        Calls `get_identity(wallet)` on the IdentityRegistry contract.
-        Returns a dict compatible with the PassportAdapter interface.
-
-        Args:
-            wallet: Casper public key hex string.
-            policy_id: policy identifier.
-
-        Returns:
-            Dict with `valid` (bool), `expires_at` (int), `policy_id` (str).
-        """
         registry_contract = getattr(self.settings, "casper_identity_registry_contract", None)
         if not registry_contract:
             return {"valid": False, "expires_at": 0, "policy_id": policy_id}
@@ -187,11 +221,6 @@ class CasperAdapter(PassportAdapterBase):
 
         try:
             import httpx
-        except ImportError:
-            logger.debug("httpx not installed; returning non-compliant")
-            return {"valid": False, "expires_at": 0, "policy_id": policy_id}
-
-        try:
             url = f"{node_address}/rpc"
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.post(url, json={
@@ -232,6 +261,8 @@ class CasperAdapter(PassportAdapterBase):
         node_address = getattr(self.settings, "casper_node_address", "")
         network = "testnet" if "test" in chain_name else "mainnet"
 
+        agent_wallet = await self._ensure_agent_wallet()
+
         return DeploymentInfo(
             chain_id="casper",
             contract_address=oracle,
@@ -241,11 +272,18 @@ class CasperAdapter(PassportAdapterBase):
                 "identity_registry_contract": registry,
                 "chain_name": chain_name,
                 "node_address": node_address,
+                "agent_public_key": agent_wallet.public_key_hex,
+                "toolkit": {
+                    "mcp": self._use_mcp,
+                    "facilitator": self._use_facilitator,
+                    "aa": True,
+                    "eip712": True,
+                },
             },
         )
 
     # ------------------------------------------------------------------
-    # Internal Casper RPC helpers (mirror scripts/e2e_casper.sh)
+    # Internal Casper RPC helpers (legacy fallback)
     # ------------------------------------------------------------------
 
     async def _record_verdict(
@@ -258,11 +296,6 @@ class CasperAdapter(PassportAdapterBase):
         verdict: bool,
         expires_at: int,
     ) -> str:
-        """Deploy a record_verdict call to the ComplianceOracle contract.
-
-        Mirrors the reference flow in `scripts/e2e_casper.sh` using
-        `casper-client put-deploy`.
-        """
         try:
             with open(secret_key_path, "r") as f:
                 secret_key = f.read().strip()
@@ -311,7 +344,6 @@ class CasperAdapter(PassportAdapterBase):
         entity_hash: str,
         reason: str,
     ) -> str:
-        """Deploy a revoke_verdict call to the ComplianceOracle contract."""
         try:
             import subprocess
             with open(secret_key_path, "r") as f:
@@ -357,7 +389,6 @@ class CasperAdapter(PassportAdapterBase):
         wallet: str,
         entity_hash: str,
     ) -> str:
-        """Deploy a mint_compliance_token call to the IdentityRegistry contract."""
         try:
             import subprocess
             with open(secret_key_path, "r") as f:

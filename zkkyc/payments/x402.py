@@ -22,6 +22,7 @@ from typing import Any, Protocol
 import httpx
 
 from ..config import Settings, get_settings
+from ..toolkit import x402_facilitator
 
 logger = logging.getLogger(__name__)
 
@@ -74,16 +75,23 @@ class X402PaymentService:
         self.repository = repository
         self._http_client = http_client
         self.settings = settings or get_settings()
-        # Fast pre-check cache only — NOT the source of truth for replay
-        # protection. `repository.is_deploy_consumed` is, when configured.
-        # Without a repository, this is the only protection there is, and
-        # it does not survive a restart; that limitation is intentional to
-        # surface rather than paper over.
         self._consumed_cache: set[str] = set()
+        self._facilitator: x402_facilitator.X402Facilitator | None = None
+        self._use_facilitator = getattr(settings, "casper_use_facilitator", True)
+
+    def _get_facilitator(self) -> x402_facilitator.X402Facilitator | None:
+        if not self._use_facilitator:
+            return None
+        if self._facilitator is None:
+            url = getattr(self.settings, "casper_x402_facilitator_url", "http://localhost:3000")
+            self._facilitator = x402_facilitator.X402Facilitator(base_url=url, settings=self.settings)
+        return self._facilitator
 
     def create_payment_challenge(self) -> dict[str, Any]:
-        """US-04.2.1. Synchronous and dependency-free on purpose — the
-        spec's 500ms response budget leaves no room for an awaited call."""
+        """US-04.2.1. Delegates to official x402 facilitator when available."""
+        facilitator = self._get_facilitator()
+        if facilitator is not None:
+            return facilitator.create_payment_challenge()
         return {
             "payment_required": True,
             "amount_cspr": str(self.settings.x402_price_cspr),
@@ -107,6 +115,28 @@ class X402PaymentService:
         if self.repository is not None and await self.repository.is_deploy_consumed(deploy_hash):
             self._consumed_cache.add(deploy_hash)
             raise PaymentReplayError()
+
+        facilitator = self._get_facilitator()
+        if facilitator is not None:
+            try:
+                result = facilitator.verify_payment(
+                    deploy_hash, entity_hash=entity_hash, api_key_id=api_key_id
+                )
+                if result.get("verified"):
+                    self._consumed_cache.add(deploy_hash)
+                    if self.repository is not None:
+                        await self.repository.record_receipt(
+                            deploy_hash=deploy_hash,
+                            entity_hash=entity_hash,
+                            amount_cspr=result.get("amount_cspr", expected_amount),
+                            api_key_id=api_key_id,
+                        )
+                    return result
+                raise PaymentVerificationError("Facilitator rejected payment proof")
+            except x402_facilitator.X402FacilitatorError as exc:
+                if getattr(exc, "status_code", None) == 202:
+                    raise PaymentPendingError() from exc
+                raise PaymentVerificationError(str(exc), status_code=getattr(exc, "status_code", 402)) from exc
 
         client = self._http_client or httpx.AsyncClient(timeout=10.0)
         owns_client = self._http_client is None
@@ -135,14 +165,6 @@ class X402PaymentService:
             if owns_client:
                 await client.aclose()
 
-        # CAVEAT: a Casper deploy's JSON shape differs between a native
-        # transfer and a contract call, and the transfer amount/target may
-        # not live at `deploy.payment.{amount,target}` for every deploy
-        # type CSPR.cloud can return. This mirrors the shape assumed by the
-        # original implementation — verify it against a real CSPR.cloud
-        # testnet response before relying on it for the demo; a wrong path
-        # here means every payment silently fails "Insufficient payment
-        # amount" rather than a null/attribute error.
         deploy = data.get("deploy", {})
         amount = float(deploy.get("payment", {}).get("amount", 0))
         target = deploy.get("payment", {}).get("target", "")

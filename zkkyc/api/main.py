@@ -45,6 +45,7 @@ import logging
 import secrets
 import time
 import uuid
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
@@ -82,6 +83,7 @@ from ..graph.entity import (
 )
 from ..graph.nrs import CIEngine, NRSEngine, refresh_jurisdiction_table
 from ..payments.x402 import PaymentVerificationError, X402PaymentService
+from ..toolkit import cspr_click, events
 from ..zk.proof import ProofGenerationError, generate_zk_proof, verify_proof_local
 from .schemas import (
     APIKeyCreateRequest,
@@ -242,11 +244,18 @@ async def lifespan(app: FastAPI):
     app.state.db = get_db()
     await app.state.db.connect()
 
-    # US-01.1.3 — idempotent schema setup for Neo4j
+    from ..toolkit import cspr_click, events
+    app.state.agent_wallet_manager = cspr_click.AgentWalletManager(settings=app.state.settings)
+    app.state.agent_wallet_manager.load_or_create()
+    app.state.event_stream = events.CSPRCloudEventStream(settings=app.state.settings)
+    app.state.event_processor = events.EventProcessor(app.state.event_stream)
+    await app.state.event_stream.start()
+
     await app.state.entity_service.ensure_schema()
 
     yield
 
+    await app.state.event_stream.stop()
     await app.state.entity_service.close()
     await app.state.db.close()
 
@@ -1099,5 +1108,62 @@ def create_app() -> FastAPI:
         )
 
         return DiscloseResponse(factors=disclosed_labels)
+
+    # ------------------------------------------------------------------ #
+    # Casper AI Toolkit endpoints (augmentation per casper.md)
+    # ------------------------------------------------------------------ #
+
+    @app.get("/api/v1/toolkit/agent-wallet")
+    async def get_agent_wallet(
+        request: Request,
+        api_key: str = Depends(get_admin_api_key),
+    ):
+        """Return the Settlement Agent's Casper wallet public key and balance."""
+        wm: cspr_click.AgentWalletManager = request.app.state.agent_wallet_manager
+        wallet = wm.wallet or wm.load_or_create()
+        gm = cspr_click.GasManager(wallet_manager=wm)
+        return {
+            "public_key": wallet.public_key_hex,
+            "created_at": wallet.created_at,
+            "balance": gm.check_balance(),
+        }
+
+    @app.get("/api/v1/toolkit/x402/health")
+    async def x402_health(
+        request: Request,
+        api_key: str = Depends(get_admin_api_key),
+    ):
+        """Return x402 facilitator health status."""
+        x402_svc: X402PaymentService = request.app.state.x402_service
+        facilitator = x402_svc._get_facilitator()
+        if facilitator is None:
+            return {"facilitator": "disabled", "fallback": "local"}
+        return {"facilitator": "configured", "base_url": facilitator.base_url}
+
+    @app.get("/api/v1/toolkit/mcp/health")
+    async def mcp_health(
+        request: Request,
+        api_key: str = Depends(get_admin_api_key),
+    ):
+        """Return Casper MCP server health status."""
+        from ..toolkit import mcp_server
+        return {"mcp": "configured", "base_url": "http://localhost:3001"}
+
+    @app.get("/api/v1/events/stream")
+    async def event_stream(request: Request, api_key: str = Depends(rate_limited_api_key)):
+        """SSE endpoint for real-time Casper on-chain events."""
+        from fastapi.responses import StreamingResponse
+        ev: events.CSPRCloudEventStream = request.app.state.event_stream
+
+        async def event_generator():
+            while True:
+                try:
+                    await ev.simulate_event("VerdictRecorded", {"entity_hash": "demo", "verdict": True})
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'ts': datetime.now(timezone.utc).isoformat()})}\n\n"
+                    await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    break
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     return app

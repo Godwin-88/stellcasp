@@ -155,6 +155,24 @@ class Settings:
     icp_passport_canister_id: str = os.getenv("ICP_PASSPORT_CANISTER_ID", "")
     icp_identity_principal: str = os.getenv("ICP_IDENTITY_PRINCIPAL", "")
 
+    # ---------------------------------------------------------------------------
+    # Casper AI Toolkit (augmentation per casper.md)
+    # ---------------------------------------------------------------------------
+    casper_x402_facilitator_url: str = os.getenv("CASPER_X402_FACILITATOR_URL", "http://localhost:3000")
+    casper_mcp_server_url: str = os.getenv("CASPER_MCP_SERVER_URL", "http://localhost:3001")
+    casper_agent_public_key: str = os.getenv("CASPER_AGENT_PUBLIC_KEY", "")
+    casper_agent_private_key: str = os.getenv("CASPER_AGENT_PRIVATE_KEY", "")
+    casper_use_facilitator: bool = os.getenv("CASPER_USE_FACILITATOR", "true").lower() == "true"
+    casper_use_mcp: bool = os.getenv("CASPER_USE_MCP", "true").lower() == "true"
+    casper_use_ss_events: bool = os.getenv("CASPER_USE_SS_EVENTS", "true").lower() == "true"
+
+    # ---------------------------------------------------------------------------
+    # Qwen Cloud (EP-09)
+    # ---------------------------------------------------------------------------
+    qwen_api_key: str = os.getenv("QWEN_API_KEY", "")
+    qwen_model: str = os.getenv("QWEN_MODEL", "qwen2.5-72b-instruct")
+    qwen_api_base: str = os.getenv("QWEN_API_BASE", "https://dashscope-intl.aliyuncs.com/api/v1")
+
     def __post_init__(self) -> None:
         """Validate that CI weights sum to 1.0 (EP-01 F-01.4.2)."""
         total = (

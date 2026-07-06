@@ -1,0 +1,35 @@
+# Casper ZKCO Smart Contract API — AI-Discoverable Documentation Index
+
+title: ZKCO ComplianceOracle + IdentityRegistry
+description: Casper Odra smart contracts for the Zero-Knowledge Compliance Oracle
+docs: ./casper/compliance_oracle/ and ./casper/identity_registry/
+
+## ComplianceOracle
+
+record_verdict(entity_hash: String, verdict: Boolean, expires_at: u64, nrs_threshold: u64)
+  - Records a PASS/FAIL compliance verdict on-chain
+  - Callable only by mint_authority
+  - Emits: VerdictRecorded{entity_hash, verdict, expires_at}
+
+revoke_verdict(entity_hash: String, reason: String)
+  - Revokes an existing verdict
+  - Callable only by mint_authority
+  - Emits: VerdictRevoked{entity_hash, reason, revoked_at}
+
+get_verdict(entity_hash: String) -> VerdictStatus
+  - Returns current verdict status (VALID, EXPIRED, REVOKED, NOT_FOUND)
+  - Read-only, no gas cost
+
+## IdentityRegistry
+
+register_identity(wallet: Key, entity_hash: String)
+  - Registers a wallet for compliance token issuance
+  - Emits: IdentityRegistered{wallet, entity_hash, registered_at}
+
+mint_compliance_token(wallet: Key, entity_hash: String)
+  - Mints compliance token for a wallet with a valid verdict
+  - Emits: ComplianceTokenMinted{wallet, entity_hash, minted_at, expires_at}
+
+get_identity(wallet: Key) -> Option<IdentityRecord>
+  - Returns identity record with status and expiry
+  - Read-only, no gas cost

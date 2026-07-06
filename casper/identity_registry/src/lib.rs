@@ -5,6 +5,7 @@ use odra::Address;
 pub struct IdentityRegistry {
     identities: VarBTreeMap<Address, IdentityRecord>,
     compliance_oracle: Var<Address>,
+    agent_key: Var<Address>,
 }
 
 #[odra::event]
@@ -12,6 +13,7 @@ pub struct IdentityRegistered {
     pub wallet: Address,
     pub entity_hash: String,
     pub registered_at: u64,
+    pub agent_key: Address,
 }
 
 #[odra::event]
@@ -20,6 +22,7 @@ pub struct ComplianceTokenMinted {
     pub entity_hash: String,
     pub minted_at: u64,
     pub expires_at: u64,
+    pub agent_key: Address,
 }
 
 #[derive(odra::odra::ODRAData, Debug, Clone)]
@@ -29,21 +32,25 @@ pub struct IdentityRecord {
     pub status: String,
     pub minted_at: Option<u64>,
     pub expires_at: Option<u64>,
+    pub agent_key: Address,
 }
 
 impl IdentityRegistry {
     #[odra::constructor]
-    pub fn constructor(compliance_oracle_address: Address) {
+    pub fn constructor(compliance_oracle_address: Address, agent_key: Address) {
         self.compliance_oracle.set(compliance_oracle_address);
+        self.agent_key.set(agent_key);
     }
 
     #[odra::external]
     pub fn register_identity(&mut self, wallet: Address, entity_hash: String) {
+        let agent = self.agent_key.get();
         let record = match self.identities.get(&wallet) {
             Some(mut existing) => {
                 existing.registered_at = self.env().get_block_time();
                 existing.entity_hash = entity_hash.clone();
                 existing.status = "PENDING".to_string();
+                existing.agent_key = agent;
                 existing
             }
             None => IdentityRecord {
@@ -52,6 +59,7 @@ impl IdentityRegistry {
                 status: "PENDING".to_string(),
                 minted_at: None,
                 expires_at: None,
+                agent_key: agent,
             },
         };
 
@@ -61,6 +69,7 @@ impl IdentityRegistry {
             wallet,
             entity_hash,
             registered_at: record.registered_at,
+            agent_key: agent,
         });
     }
 
@@ -78,11 +87,13 @@ impl IdentityRegistry {
         let _oracle_addr = self.compliance_oracle.get();
         let now = self.env().get_block_time();
         let expires_at = now.saturating_add(30 * 24 * 60 * 60);
+        let agent = self.agent_key.get();
 
         let mut record = identity;
         record.status = "COMPLIANT".to_string();
         record.minted_at = Some(now);
         record.expires_at = Some(expires_at);
+        record.agent_key = agent;
 
         self.identities.set(&wallet, record.clone());
 
@@ -91,6 +102,7 @@ impl IdentityRegistry {
             entity_hash,
             minted_at: now,
             expires_at,
+            agent_key: agent,
         });
     }
 
@@ -106,5 +118,10 @@ impl IdentityRegistry {
             }
             record
         })
+    }
+
+    #[odra::external(read_only = true)]
+    pub fn get_agent_key(&self) -> Address {
+        self.agent_key.get()
     }
 }

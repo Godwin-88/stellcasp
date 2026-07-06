@@ -32,7 +32,6 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # PostgreSQL auto-runs .sql files in this directory on first init
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zkkyc"]
@@ -40,8 +39,39 @@ services:
       timeout: 5s
       retries: 5
 
-  # Runs Neo4j schema migrations after Neo4j is healthy
-  # PostgreSQL migrations run automatically via docker-entrypoint-initdb.d
+  x402-facilitator:
+    image: make-software/casper-x402:latest
+    container_name: zkkyc-x402-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - CASPER_NODE_URL=https://rpc.testnet.cspr.network
+      - FACILITATOR_PRICE=0.001
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - toolkit
+
+  casper-mcp:
+    build:
+      context: ./zkkyc/toolkit
+      dockerfile: Dockerfile.mcp
+    container_name: zkkyc-mcp-dev
+    ports:
+      - "3001:3001"
+    environment:
+      - CASPER_NODE_URL=https://rpc.testnet.cspr.network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - toolkit
+
   neo4j-migrations:
     image: python:3.11-slim
     container_name: zkkyc-neo4j-migrations
@@ -60,11 +90,8 @@ services:
         pip install --no-cache-dir neo4j &&
         python scripts/run_neo4j_migrations.py
       "
-    # Only run once, don't restart
     restart: "no"
 
-  # Optional: Run all migrations (Postgres + Neo4j) via Python
-  # Use this if you want explicit control over migration execution
   migrations:
     image: python:3.11-slim
     container_name: zkkyc-migrations
@@ -94,10 +121,9 @@ services:
         python scripts/run_neo4j_migrations.py &&
         echo 'All migrations completed successfully'
       "
-    # Only run once, don't restart
     restart: "no"
     profiles:
-      - migrations  # Only runs when explicitly requested with --profile migrations
+      - migrations
 
 volumes:
   neo4j_data:

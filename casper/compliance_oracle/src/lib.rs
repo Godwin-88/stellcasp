@@ -4,6 +4,8 @@ use odra::prelude::*;
 pub struct ComplianceOracle {
     verdicts: VarBTreeMap<String, VerdictRecord>,
     mint_authority: Var<Address>,
+    policy_version: Var<u64>,
+    agent_key: Var<Address>,
 }
 
 #[odra::event]
@@ -11,6 +13,7 @@ pub struct VerdictRecorded {
     pub entity_hash: String,
     pub verdict: bool,
     pub expires_at: u64,
+    pub agent_key: Address,
 }
 
 #[odra::event]
@@ -18,6 +21,7 @@ pub struct VerdictRevoked {
     pub entity_hash: String,
     pub reason: String,
     pub revoked_at: u64,
+    pub agent_key: Address,
 }
 
 #[derive(odra::odra::ODRAData, Debug, Clone)]
@@ -28,12 +32,23 @@ pub struct VerdictRecord {
     pub nrs_threshold: u64,
     pub revoked_at: Option<u64>,
     pub reason: Option<String>,
+    pub policy_version: u64,
+}
+
+#[derive(odra::odra::ODRAData, Debug, Clone)]
+pub struct VerdictStatus {
+    pub verdict: Option<bool>,
+    pub expires_at: u64,
+    pub status: String,
+    pub policy_version: u64,
 }
 
 impl ComplianceOracle {
     #[odra::constructor]
-    pub fn constructor(mint_authority: Address) {
+    pub fn constructor(mint_authority: Address, agent_key: Address) {
         self.mint_authority.set(mint_authority);
+        self.agent_key.set(agent_key);
+        self.policy_version.set(1);
     }
 
     #[odra::external]
@@ -48,6 +63,7 @@ impl ComplianceOracle {
             panic!("PermissionDenied");
         }
 
+        let current_version = self.policy_version.get();
         let record = VerdictRecord {
             verdict,
             recorded_at: self.env().get_block_time(),
@@ -55,6 +71,7 @@ impl ComplianceOracle {
             nrs_threshold,
             revoked_at: None,
             reason: None,
+            policy_version: current_version,
         };
 
         self.verdicts.set(&entity_hash, record.clone());
@@ -63,6 +80,7 @@ impl ComplianceOracle {
             entity_hash: entity_hash.clone(),
             verdict,
             expires_at,
+            agent_key: self.agent_key.get(),
         });
     }
 
@@ -82,8 +100,22 @@ impl ComplianceOracle {
                 entity_hash,
                 reason,
                 revoked_at: self.env().get_block_time(),
+                agent_key: self.agent_key.get(),
             });
         }
+    }
+
+    #[odra::external]
+    pub fn upgrade_policy(&mut self, new_version: u64) {
+        if self.env().caller() != self.mint_authority.get() {
+            panic!("PermissionDenied");
+        }
+        self.policy_version.set(new_version);
+    }
+
+    #[odra::external(read_only = true)]
+    pub fn get_policy_version(&self) -> u64 {
+        self.policy_version.get()
     }
 
     #[odra::external(read_only = true)]
@@ -96,6 +128,7 @@ impl ComplianceOracle {
                     verdict: None,
                     expires_at: record.expires_at,
                     status: "EXPIRED".to_string(),
+                    policy_version: record.policy_version,
                 };
             }
             if record.revoked_at.is_some() {
@@ -103,12 +136,14 @@ impl ComplianceOracle {
                     verdict: Some(false),
                     expires_at: record.expires_at,
                     status: "REVOKED".to_string(),
+                    policy_version: record.policy_version,
                 };
             }
             return VerdictStatus {
                 verdict: Some(record.verdict),
                 expires_at: record.expires_at,
                 status: "VALID".to_string(),
+                policy_version: record.policy_version,
             };
         }
 
@@ -116,13 +151,12 @@ impl ComplianceOracle {
             verdict: None,
             expires_at: 0,
             status: "NOT_FOUND".to_string(),
+            policy_version: self.policy_version.get(),
         }
     }
-}
 
-#[derive(odra::odra::ODRAData, Debug, Clone)]
-pub struct VerdictStatus {
-    pub verdict: Option<bool>,
-    pub expires_at: u64,
-    pub status: String,
+    #[odra::external(read_only = true)]
+    pub fn get_agent_key(&self) -> Address {
+        self.agent_key.get()
+    }
 }
