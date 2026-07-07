@@ -1,0 +1,5 @@
+[[contracts]]
+fqn = "compliance_oracle::compliance_oracle::ComplianceOracle"
+
+[[contracts]]
+fqn = "identity_registry::identity_registry::IdentityRegistry"
